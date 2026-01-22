@@ -35,7 +35,36 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
 });
-
+// --- TEMPORARY SETUP ROUTE (Run once to create tables) ---
+app.get("/setup-db", async (req, res) => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username VARCHAR(50) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS friendships (
+          id SERIAL PRIMARY KEY,
+          sender_id INT REFERENCES users(id),
+          receiver_id INT REFERENCES users(id),
+          status VARCHAR(20) DEFAULT 'pending',
+          UNIQUE(sender_id, receiver_id)
+      );
+      CREATE TABLE IF NOT EXISTS messages (
+          id SERIAL PRIMARY KEY,
+          sender_id INT REFERENCES users(id),
+          receiver_id INT REFERENCES users(id),
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    res.send("✅ Database Tables Created Successfully!");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("❌ Error creating tables: " + err.message);
+  }
+});
 // --- AUTHENTICATION ROUTES (The "Auth" Codes) ---
 
 // Register Route
