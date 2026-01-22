@@ -153,15 +153,17 @@ app.post("/friend-request", async (req, res) => {
 app.get("/friends/:userId", async (req, res) => {
   const { userId } = req.params;
   try {
-    // Get accepted friends
+    // FIXED: Added DISTINCT to prevent duplicates
     const friends = await pool.query(
-      `SELECT u.id, u.username 
+      `SELECT DISTINCT u.id, u.username 
        FROM friendships f
        JOIN users u ON (u.id = f.sender_id OR u.id = f.receiver_id)
        WHERE (f.sender_id = $1 OR f.receiver_id = $1) 
-       AND f.status = 'accepted' AND u.id != $1`,
+       AND f.status = 'accepted' 
+       AND u.id != $1`,
       [userId]
     );
+
     // Get received requests
     const requests = await pool.query(
       `SELECT f.id as friendship_id, u.username, u.id as sender_id
@@ -170,8 +172,12 @@ app.get("/friends/:userId", async (req, res) => {
        WHERE f.receiver_id = $1 AND f.status = 'pending'`,
       [userId]
     );
+    
     res.json({ friends: friends.rows, requests: requests.rows });
-  } catch (err) { res.status(500).json({ error: "Error fetching friends" }); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: "Error fetching friends" }); 
+  }
 });
 
 app.post("/accept-friend", async (req, res) => {

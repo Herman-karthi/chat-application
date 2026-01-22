@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
-import { API_URL } from "./config"; // <--- IMPORT THIS
+import { API_URL } from "./config"; 
 
 // Connect Socket to the Deployment Backend
 const socket = io.connect(API_URL);
@@ -23,6 +23,7 @@ function Chat({ user, logout }) {
 
   useEffect(() => {
     socket.on("receive_message", (data) => {
+      // Only add message if it belongs to the current open chat
       if (currentChat && (
           (data.sender_id === currentChat.id && data.receiver_id === user.id) || 
           (data.sender_id === user.id && data.receiver_id === currentChat.id)
@@ -34,11 +35,7 @@ function Chat({ user, logout }) {
     return () => socket.off("receive_message");
   }, [currentChat, user.id]);
 
-  // --- UPDATED FUNCTIONS WITH API_URL ---
-
   const fetchFriends = async () => {
-    // WAS: axios.get("/friends/...")
-    // NOW: axios.get(`${API_URL}/friends/...`)
     try {
       const res = await axios.get(`${API_URL}/friends/${user.id}`);
       setFriends(res.data.friends);
@@ -50,6 +47,7 @@ function Chat({ user, logout }) {
 
   const handleSearch = async () => {
     try {
+      // Sending currentUserId helps backend exclude you from results if you want
       const res = await axios.get(`${API_URL}/search?q=${searchQuery}&currentUserId=${user.id}`);
       setSearchResults(res.data);
     } catch (err) {
@@ -69,7 +67,7 @@ function Chat({ user, logout }) {
   const acceptRequest = async (friendshipId) => {
     try {
       await axios.post(`${API_URL}/accept-friend`, { friendshipId });
-      fetchFriends(); // Refresh list
+      fetchFriends(); // Refresh list to see the new friend immediately
     } catch (err) {
       console.error("Error accepting:", err);
     }
@@ -77,6 +75,7 @@ function Chat({ user, logout }) {
 
   const openChat = async (friend) => {
     setCurrentChat(friend);
+    // Join a unique room for just these two users
     socket.emit("join_room", { user1: user.id, user2: friend.id });
     try {
       const res = await axios.get(`${API_URL}/messages/${user.id}/${friend.id}`);
@@ -94,6 +93,7 @@ function Chat({ user, logout }) {
       receiverId: currentChat.id,
       content: newMessage
     };
+    // Emit to socket (for real-time)
     socket.emit("send_message", msgData);
     setNewMessage("");
   };
@@ -104,12 +104,11 @@ function Chat({ user, logout }) {
     }, 100);
   };
 
-  // --- UI REMAINS THE SAME ---
   return (
     <div style={{ display: "flex", gap: "20px", height: "80vh", fontFamily: "Arial" }}>
-      {/* LEFT SIDEBAR */}
+      {/* --- LEFT SIDEBAR --- */}
       <div style={{ width: "300px", borderRight: "1px solid #ccc", padding: "10px" }}>
-        <h3>Welcome, {user.username} <button onClick={logout} style={{fontSize: "12px"}}>Logout</button></h3>
+        <h3>Welcome, {user.username} <button onClick={logout} style={{fontSize: "12px", cursor: "pointer"}}>Logout</button></h3>
         
         {/* Search Section */}
         <div style={{ marginBottom: "20px", padding: "10px", background: "#f9f9f9", borderRadius: "8px" }}>
@@ -121,13 +120,28 @@ function Chat({ user, logout }) {
           />
           <button onClick={handleSearch} style={{ width: "30%", marginLeft: "5px" }}>Search</button>
           
-          {/* Search Results List */}
-          {searchResults.map(u => (
-            <div key={u.id} style={{ padding: "5px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
-              <span>{u.username}</span>
-              <button onClick={() => sendRequest(u.id)} style={{ fontSize: "10px" }}>Add</button>
-            </div>
-          ))}
+          {/* UPDATED: Search Results List with Logic */}
+          <div style={{ marginTop: "10px" }}>
+            {searchResults.map(u => {
+              // Logic to check status
+              const isFriend = friends.some(f => f.id === u.id);
+              const isMe = u.id === user.id;
+
+              return (
+                <div key={u.id} style={{ padding: "5px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>{u.username}</span>
+                  
+                  {isMe ? (
+                    <span style={{ fontSize: "10px", color: "#888" }}>(You)</span>
+                  ) : isFriend ? (
+                    <span style={{ fontSize: "10px", color: "green", fontWeight: "bold" }}>Connected</span>
+                  ) : (
+                    <button onClick={() => sendRequest(u.id)} style={{ fontSize: "10px", cursor: "pointer" }}>Add</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Requests Section */}
@@ -135,8 +149,8 @@ function Chat({ user, logout }) {
           <div style={{ marginBottom: "20px" }}>
             <h4>Friend Requests</h4>
             {requests.map(req => (
-              <div key={req.friendship_id} style={{ background: "#eef", padding: "5px", marginBottom: "5px" }}>
-                {req.username} <button onClick={() => acceptRequest(req.friendship_id)}>Accept</button>
+              <div key={req.friendship_id} style={{ background: "#eef", padding: "5px", marginBottom: "5px", borderRadius: "5px" }}>
+                {req.username} <button onClick={() => acceptRequest(req.friendship_id)} style={{ marginLeft: "10px", cursor: "pointer" }}>Accept</button>
               </div>
             ))}
           </div>
@@ -146,6 +160,8 @@ function Chat({ user, logout }) {
 
         {/* Friends List */}
         <h4>My Friends</h4>
+        {friends.length === 0 ? <p style={{color: "#888"}}>No friends yet.</p> : null}
+        
         {friends.map(friend => (
           <div 
             key={friend.id} 
@@ -164,7 +180,7 @@ function Chat({ user, logout }) {
         ))}
       </div>
 
-      {/* RIGHT SIDE: Chat Window */}
+      {/* --- RIGHT SIDE: Chat Window --- */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         {currentChat ? (
           <>
@@ -199,7 +215,7 @@ function Chat({ user, logout }) {
                 placeholder="Type a message..." 
                 style={{ flex: 1, padding: "10px", borderRadius: "20px", border: "1px solid #ccc" }}
               />
-              <button onClick={sendMessage} style={{ marginLeft: "10px", padding: "10px 20px", borderRadius: "20px", background: "#007bff", color: "white", border: "none" }}>Send</button>
+              <button onClick={sendMessage} style={{ marginLeft: "10px", padding: "10px 20px", borderRadius: "20px", background: "#007bff", color: "white", border: "none", cursor: "pointer" }}>Send</button>
             </div>
           </>
         ) : (
