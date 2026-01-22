@@ -3,7 +3,6 @@ import axios from "axios";
 import io from "socket.io-client";
 import { API_URL } from "./config"; 
 
-// Connect Socket to the Deployment Backend
 const socket = io.connect(API_URL);
 
 function Chat({ user, logout }) {
@@ -23,7 +22,6 @@ function Chat({ user, logout }) {
 
   useEffect(() => {
     socket.on("receive_message", (data) => {
-      // Only add message if it belongs to the current open chat
       if (currentChat && (
           (data.sender_id === currentChat.id && data.receiver_id === user.id) || 
           (data.sender_id === user.id && data.receiver_id === currentChat.id)
@@ -47,7 +45,6 @@ function Chat({ user, logout }) {
 
   const handleSearch = async () => {
     try {
-      // Sending currentUserId helps backend exclude you from results if you want
       const res = await axios.get(`${API_URL}/search?q=${searchQuery}&currentUserId=${user.id}`);
       setSearchResults(res.data);
     } catch (err) {
@@ -67,15 +64,34 @@ function Chat({ user, logout }) {
   const acceptRequest = async (friendshipId) => {
     try {
       await axios.post(`${API_URL}/accept-friend`, { friendshipId });
-      fetchFriends(); // Refresh list to see the new friend immediately
+      fetchFriends(); 
     } catch (err) {
       console.error("Error accepting:", err);
     }
   };
 
+  // --- NEW: FUNCTION TO REMOVE FRIEND ---
+  const removeFriend = async (friendId) => {
+    if (!window.confirm("Are you sure you want to unfriend this person?")) return;
+
+    try {
+      await axios.post(`${API_URL}/remove-friend`, { user1: user.id, user2: friendId });
+      
+      // Update local state immediately
+      setFriends(friends.filter(f => f.id !== friendId));
+      if (currentChat?.id === friendId) setCurrentChat(null); // Close chat if open
+      alert("Unfriended successfully.");
+      
+      // Refresh search results to show "Add" button again
+      handleSearch(); 
+    } catch (err) {
+      console.error("Error removing friend:", err);
+      alert("Failed to unfriend.");
+    }
+  };
+
   const openChat = async (friend) => {
     setCurrentChat(friend);
-    // Join a unique room for just these two users
     socket.emit("join_room", { user1: user.id, user2: friend.id });
     try {
       const res = await axios.get(`${API_URL}/messages/${user.id}/${friend.id}`);
@@ -93,7 +109,6 @@ function Chat({ user, logout }) {
       receiverId: currentChat.id,
       content: newMessage
     };
-    // Emit to socket (for real-time)
     socket.emit("send_message", msgData);
     setNewMessage("");
   };
@@ -106,7 +121,7 @@ function Chat({ user, logout }) {
 
   return (
     <div style={{ display: "flex", gap: "20px", height: "80vh", fontFamily: "Arial" }}>
-      {/* --- LEFT SIDEBAR --- */}
+      {/* LEFT SIDEBAR */}
       <div style={{ width: "300px", borderRight: "1px solid #ccc", padding: "10px" }}>
         <h3>Welcome, {user.username} <button onClick={logout} style={{fontSize: "12px", cursor: "pointer"}}>Logout</button></h3>
         
@@ -120,10 +135,8 @@ function Chat({ user, logout }) {
           />
           <button onClick={handleSearch} style={{ width: "30%", marginLeft: "5px" }}>Search</button>
           
-          {/* UPDATED: Search Results List with Logic */}
           <div style={{ marginTop: "10px" }}>
             {searchResults.map(u => {
-              // Logic to check status
               const isFriend = friends.some(f => f.id === u.id);
               const isMe = u.id === user.id;
 
@@ -134,7 +147,22 @@ function Chat({ user, logout }) {
                   {isMe ? (
                     <span style={{ fontSize: "10px", color: "#888" }}>(You)</span>
                   ) : isFriend ? (
-                    <span style={{ fontSize: "10px", color: "green", fontWeight: "bold" }}>Connected</span>
+                    // NEW: Clickable "Connected" text that triggers removeFriend
+                    <button 
+                      onClick={() => removeFriend(u.id)}
+                      style={{ 
+                        fontSize: "10px", 
+                        color: "white", 
+                        background: "green", 
+                        border: "none", 
+                        borderRadius: "4px",
+                        padding: "3px 6px",
+                        cursor: "pointer"
+                      }}
+                      title="Click to Unfriend"
+                    >
+                      Connected (x)
+                    </button>
                   ) : (
                     <button onClick={() => sendRequest(u.id)} style={{ fontSize: "10px", cursor: "pointer" }}>Add</button>
                   )}
@@ -172,15 +200,25 @@ function Chat({ user, logout }) {
               background: currentChat?.id === friend.id ? "#007bff" : "transparent",
               color: currentChat?.id === friend.id ? "white" : "black",
               borderRadius: "5px",
-              marginBottom: "5px"
+              marginBottom: "5px",
+              display: "flex", 
+              justifyContent: "space-between",
+              alignItems: "center"
             }}
           >
-            {friend.username}
+            <span>{friend.username}</span>
+            {/* Optional: Small 'x' to remove friend directly from list too */}
+            <button 
+              onClick={(e) => { e.stopPropagation(); removeFriend(friend.id); }}
+              style={{ fontSize: "10px", background: "none", border: "none", color: "red", cursor: "pointer" }}
+            >
+              x
+            </button>
           </div>
         ))}
       </div>
 
-      {/* --- RIGHT SIDE: Chat Window --- */}
+      {/* RIGHT SIDE */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         {currentChat ? (
           <>

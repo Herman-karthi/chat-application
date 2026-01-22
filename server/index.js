@@ -149,6 +149,22 @@ app.post("/friend-request", async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(400).json({ error: "Request already sent" }); }
 });
+// --- UNFRIEND ROUTE ---
+app.post("/remove-friend", async (req, res) => {
+  const { user1, user2 } = req.body;
+  try {
+    await pool.query(
+      `DELETE FROM friendships 
+       WHERE (sender_id = $1 AND receiver_id = $2) 
+       OR (sender_id = $2 AND receiver_id = $1)`,
+      [user1, user2]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error removing friend" });
+  }
+});
 
 app.get("/friends/:userId", async (req, res) => {
   const { userId } = req.params;
