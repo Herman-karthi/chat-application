@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Auth from "./Auth";
 import Chat from "./Chat";
+import io from "socket.io-client";
 import { API_URL } from "./config"; // Import the URL
 
 // Update Socket Connection
